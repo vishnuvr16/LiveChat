@@ -16,12 +16,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { MoreVertical, Trash2, AlertTriangle, ChevronLeft } from "lucide-react";
+import { MoreVertical, Trash2, AlertTriangle, ChevronLeft, View, Users } from "lucide-react";
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useRouter } from "next/navigation";
+import { GroupMembersDialog } from "./GroupMembersDialog";
 
 const GRADIENT_COLORS = [
   "from-teal-400 to-emerald-500",
@@ -52,20 +53,26 @@ interface ChatHeaderProps {
   currentUserId: string;
   participantName: string;
   participantOnline?: boolean;
+  conversation: any;
   onBack?: () => void;
   showBackButton?: boolean;
+  // onStartChat?: (userId: string) => void;
 }
 
 export function ChatHeader({ 
   conversationId, 
   currentUserId, 
+  conversation,
   participantName, 
   participantOnline,
   onBack,
+  // onStartChat,
   showBackButton = false
 }: ChatHeaderProps) {
   const [showDeleteAlert, setShowDeleteAlert] = useState(false);
   const router = useRouter();
+
+  const [showMembers, setShowMembers] = useState(false);
 
   const deleteConversation = useMutation(api.chats.deleteConversation);
 
@@ -115,12 +122,17 @@ export function ChatHeader({
           </div>
 
           {/* Name and status */}
-          <div className="min-w-0">
-            <h2 className="font-semibold text-xs sm:text-sm text-foreground truncate max-w-[150px] sm:max-w-[200px] md:max-w-full">
-              {participantName}
-            </h2>
-            <p className="text-[10px] sm:text-xs text-muted-foreground">
-              {participantOnline ? "Online" : "Offline"}
+          <div>
+            <h2 className="font-semibold text-foreground">{conversation.name}</h2>
+            <p className="text-xs text-muted-foreground">
+              {conversation.isGroup ? (
+                <>
+                  {conversation.memberCount} members
+                  {conversation.onlineCount > 0 && ` · ${conversation.onlineCount} online`}
+                </>
+              ) : (
+                conversation.participantOnline ? "Online" : "Offline"
+              )}
             </p>
           </div>
         </div>
@@ -128,6 +140,17 @@ export function ChatHeader({
         {/* Actions */}
         <div className="flex items-center gap-0.5 sm:gap-1">
           {/* Dropdown Menu */}
+          {conversation.isGroup && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowMembers(true)}
+              className="text-muted-foreground hover:text-foreground"
+              title="View members"
+            >
+              <Users className="h-5 w-5" />
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button 
@@ -139,6 +162,7 @@ export function ChatHeader({
                 <MoreVertical className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </Button>
             </DropdownMenuTrigger>
+            
             <DropdownMenuContent align="end" className="w-44 sm:w-48">
               <DropdownMenuItem
                 onClick={() => setShowDeleteAlert(true)}
@@ -182,6 +206,16 @@ export function ChatHeader({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {conversation.isGroup && (
+        <GroupMembersDialog
+          open={showMembers}
+          onOpenChange={setShowMembers}
+          conversationId={conversation.id}
+          currentUserId={currentUserId}
+          // onStartChat={onStartChat}
+        />
+      )}
     </>
   );
 }

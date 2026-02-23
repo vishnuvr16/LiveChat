@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trash2, SmilePlus } from "lucide-react";
+import { Trash2, SmilePlus, ArrowDown } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -10,6 +10,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { TypingIndicator } from "../TypingIndicator";
+import { Button } from "@/components/ui/button";
 
 interface ChatMessagesProps {
   conversationId: Id<"conversations">;
@@ -129,11 +130,11 @@ const groupMessagesByDate = (messages: Message[]) => {
 
 export function ChatMessages({ conversationId, currentUserId }: ChatMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
-
   const [showScrollButton, setShowScrollButton] = useState(false);
-  const [userScrolled, setUserScrolled] = useState(false);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const prevMessagesLengthRef = useRef(0);
 
   const messages = useQuery(api.chats.getMessages, {
     conversationId,
@@ -143,10 +144,6 @@ export function ChatMessages({ conversationId, currentUserId }: ChatMessagesProp
   const deleteMessage = useMutation(api.chats.deleteMessage);
   const addReaction = useMutation(api.chats.addReaction);
   const removeReaction = useMutation(api.chats.removeReaction);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   const typingUsers = useQuery(api.chats.getTypingUsers, {
     conversationId,
@@ -163,33 +160,60 @@ export function ChatMessages({ conversationId, currentUserId }: ChatMessagesProp
       });
     }
   }, [conversationId, currentUserId, markAsRead]);
-  
 
-  // Detect user scroll
-  const handleScroll = () => {
-    if (!messagesContainerRef.current) return;
-
-    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-
-    setUserScrolled(!isNearBottom);
+  // Check if user is at bottom
+  const checkIfAtBottom = () => {
+    if (!containerRef.current) return true;
+    const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
+    const bottom = Math.abs(scrollHeight - scrollTop - clientHeight) < 50;
+    return bottom;
   };
 
-  
+  // Handle scroll events
+  const handleScroll = () => {
+    const atBottom = checkIfAtBottom();
+    setIsAtBottom(atBottom);
+    
+    // Hide button if user scrolls to bottom
+    if (atBottom) {
+      setShowScrollButton(false);
+    }
+  };
+
   // Scroll to bottom
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    setIsAtBottom(true);
     setShowScrollButton(false);
-    setUserScrolled(false);
   };
 
+  // Handle new messages
   useEffect(() => {
-    if (messages && !userScrolled) {
-      scrollToBottom();
-    } else if (messages && userScrolled) {
-      setShowScrollButton(true);
+    if (!messages) return;
+
+    const currentLength = messages.length;
+    const prevLength = prevMessagesLengthRef.current;
+
+    // Check if new messages arrived
+    if (currentLength > prevLength) {
+      if (isAtBottom) {
+        // If user was at bottom, auto-scroll
+        scrollToBottom();
+      } else {
+        // If user scrolled up, show button
+        setShowScrollButton(true);
+      }
     }
+
+    prevMessagesLengthRef.current = currentLength;
   }, [messages]);
+
+  // Initial scroll to bottom when conversation loads
+  useEffect(() => {
+    if (messages && messages.length > 0) {
+      scrollToBottom();
+    }
+  }, [conversationId]); // Run when conversation changes
 
   const handleDeleteMessage = async (messageId: Id<"messages">) => {
     try {
@@ -238,7 +262,32 @@ export function ChatMessages({ conversationId, currentUserId }: ChatMessagesProp
   const groupedMessages = groupMessagesByDate(messages);
 
   return (
-    <div className="flex-1 overflow-y-auto scrollbar-thin bg-chat-bg px-4 py-4">
+    <div 
+      ref={containerRef}
+      onScroll={handleScroll}
+      className="flex-1 overflow-y-auto scrollbar-thin bg-chat-bg px-4 py-4 relative"
+    >
+      {/* New Messages Button */}
+      <AnimatePresence>
+        {showScrollButton && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="sticky bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none"
+          >
+            <Button
+              onClick={scrollToBottom}
+              className="pointer-events-auto bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg rounded-full px-4 py-2 h-auto"
+              size="sm"
+            >
+              <ArrowDown className="h-4 w-4 mr-2" />
+              New Messages
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {Array.from(groupedMessages.entries()).map(([dateKey, msgs]) => (
         <div key={dateKey}>
           {/* Date Badge */}
@@ -355,7 +404,7 @@ export function ChatMessages({ conversationId, currentUserId }: ChatMessagesProp
                     </p>
                   </div>
 
-                  {/* Reactions - Now using reactions array */}
+                  {/* Reactions */}
                   {message.reactions && message.reactions.length > 0 && !message.isDeleted && (
                     <div className={`flex gap-1 mt-1 ${isMine ? "justify-end" : "justify-start"}`}>
                       {message.reactions.map((reaction) => {
@@ -387,11 +436,14 @@ export function ChatMessages({ conversationId, currentUserId }: ChatMessagesProp
           })}
         </div>
       ))}
+      
+      {/* Typing Indicator */}
       {typingUsers && typingUsers.length > 0 && (
         <div className="px-4 pb-1">
           <TypingIndicator names={typingUsers} />
         </div>
       )}
+      
       <div ref={messagesEndRef} />
     </div>
   );

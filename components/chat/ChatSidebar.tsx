@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, X, User, LogOut, ChevronLeft } from "lucide-react";
+import { Search, X, User, LogOut, ChevronLeft, Users } from "lucide-react";
 import { useState, useMemo } from "react";
 import { SearchUserDialog } from "./SearchUserDialog";
 import { motion, AnimatePresence } from "framer-motion";
@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useClerk } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import CoolLoader from "../CoolLoader"
+import { CreateGroupDialog } from "./CreateGroupDialog";
 
 const GRADIENT_COLORS = [
   "from-teal-400 to-emerald-500",
@@ -72,6 +73,10 @@ export function ChatSidebar({
   const [searchQuery, setSearchQuery] = useState("");
   const router = useRouter();
   const { signOut } = useClerk();
+
+  // group
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+
 
   const currentUser = useQuery(api.users.readUser, {
     userId: currentUserId,
@@ -158,11 +163,29 @@ export function ChatSidebar({
           </div>
         </div>
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowCreateGroup(true)}
+            className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
+            title="Create Group"
+          >
+            <Users className="h-4 w-4" />
+          </Button>
           <SearchUserDialog 
             currentUserId={currentUserId} 
             onSelectConversation={handleSelect}
           />
         </div>
+        <CreateGroupDialog
+          open={showCreateGroup}
+          onOpenChange={setShowCreateGroup}
+          currentUserId={currentUserId}
+          onGroupCreated={(conversationId) => {
+            handleSelect(conversationId);
+            setShowCreateGroup(false);
+          }}
+        />
       </div>
 
       {/* Search */}
@@ -239,10 +262,19 @@ export function ChatSidebar({
                           {formatChatTime(conv.updatedAt ? new Date(conv.updatedAt).getTime() : Date.now())}
                         </span>
                       </div>
+
                       <div className="flex items-center justify-between">
-                        <p className="text-[10px] sm:text-xs text-muted-foreground truncate pr-2">
-                          {conv.lastMessageType === "image" ? "📸 Photo" : conv.lastMessage || "Start a conversation"}
-                        </p>
+                        <div className="flex items-center gap-1 min-w-0">
+                          {/* {conv.isGroup && (
+                            <span className="text-[10px] sm:text-xs text-muted-foreground shrink-0 mr-1">
+                              👥 {conv.memberCount}
+                            </span>
+                          )} */}
+                          <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
+                            {conv.lastMessageType === "image" ? "📸 Photo" : conv.lastMessage || "Start a conversation"}
+                          </p>
+                        </div>
+                        
                         {conv.unreadCount > 0 && (
                           <span className="shrink-0 min-w-[18px] sm:min-w-[20px] h-4 sm:h-5 bg-primary text-primary-foreground text-[10px] sm:text-[11px] font-bold rounded-full flex items-center justify-center px-1 sm:px-1.5">
                             {conv.unreadCount}

@@ -434,6 +434,59 @@ export const getTypingUsers = query({
   }
 });
 
+// ======= GROUP =======
+export const getGroupDetails = query({
+  args: {
+    conversationId: v.id("conversations"),
+    currentUserId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation || !conversation.isGroup) return null;
+
+    const currentUser = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("userId"), args.currentUserId))
+      .first();
+
+    if (!currentUser) return null;
+
+    // Get all participants
+    const participantIds = conversation.participants || [];
+    const participants = await Promise.all(
+      participantIds.map(id => ctx.db.get(id))
+    );
+
+    // Get online status from presence table
+    const onlinePresence = await ctx.db
+      .query("presence")
+      .withIndex("by_status", (q) => q.eq("status", "online"))
+      .collect();
+    
+    const onlineUserIds = new Set(onlinePresence.map(p => p.userId));
+
+    // Get creator info
+    const creator = conversation.createdBy ? await ctx.db.get(conversation.createdBy) : null;
+
+    const members = participants
+      .filter((p): p is NonNullable<typeof p> => p !== null)
+      .map(user => ({
+        userId: user.userId,
+        name: user.name || "Unknown",
+        profileImage: user.profileImage,
+        isOnline: onlineUserIds.has(user._id),
+        lastSeenAt: user.lastSeenAt,
+      }));
+
+    return {
+      name: conversation.name,
+      members,
+      createdBy: creator?.name || "Unknown",
+      createdAt: conversation.createdAt,
+    };
+  },
+});
+
 // ============= QUERIES =============
 
 export const getConversation = query({
@@ -448,19 +501,32 @@ export const getConversation = query({
 
     if (!user) return [];
 
-    const conversations = await ctx.db
+    // Get 1-on-1 conversations
+    const oneOnOneConversations = await ctx.db
       .query("conversations")
       .filter((q) =>
         q.or(
           q.eq(q.field("participantOne"), user._id),
-          q.eq(q.field("participantTwo"), user._id),
-          q.and(
-            q.eq(q.field("isGroup"), true),
-          )
+          q.eq(q.field("participantTwo"), user._id)
         )
       )
       .collect();
 
+    // Get ALL group conversations first
+    const allGroupConversations = await ctx.db
+      .query("conversations")
+      .filter((q) => q.eq(q.field("isGroup"), true))
+      .collect();
+
+    // THEN filter to only those where user is in participants array
+    const groupConversations = allGroupConversations.filter(conv => 
+      conv.participants?.includes(user._id)
+    );
+
+    // Combine both
+    const conversations = [...oneOnOneConversations, ...groupConversations];
+
+    // Rest of your existing code...
     const onlinePresence = await ctx.db
       .query("presence")
       .withIndex("by_status", (q) => q.eq("status", "online"))
@@ -474,11 +540,16 @@ export const getConversation = query({
         let chatImage = "";
         let participantOnline = false;
         let participantId = "";
+        let memberCount = 0;
 
         if (conv.isGroup) {
+          // Handle group chat
           name = conv.name || "Group Chat";
           chatImage = conv.groupImage || "";
+          memberCount = conv.participants?.length || 0;
+          participantOnline = false; // Groups don't show online status
         } else {
+          // Handle 1-on-1 chat
           const otherParticipantId =
             conv.participantOne === user._id
               ? conv.participantTwo
@@ -489,16 +560,18 @@ export const getConversation = query({
           chatImage = otherUser?.profileImage ?? "";
           participantId = otherUser?.userId ?? "";
           participantOnline = otherUser ? onlineUserIds.has(otherUser._id) : false;
+          memberCount = 2;
         }
 
         const lastMessage = conv.lastMessageId
           ? await ctx.db.get(conv.lastMessageId)
           : null;
 
-        const unreadCount = await ctx.db
+        // Get unread count
+        const unreadMessages = await ctx.db
           .query("messages")
           .withIndex("by_conversation", (q) => q.eq("conversationId", conv._id))
-          .filter((q) =>
+          .filter((q) => 
             q.and(
               q.gt(q.field("createdAt"), user.lastSeenAt || 0),
               q.neq(q.field("senderId"), user._id)
@@ -513,9 +586,9 @@ export const getConversation = query({
           lastMessage: lastMessage?.content ?? "",
           lastMessageTime: conv.updatedAt,
           lastMessageType: lastMessage?.type,
-          unreadCount: unreadCount.length,
+          unread: unreadMessages.length,
           isGroup: conv.isGroup || false,
-          participantCount: conv.participants?.length,
+          memberCount,
           participantId,
           participantOnline,
           updatedAt: conv.updatedAt

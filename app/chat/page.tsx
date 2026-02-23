@@ -11,12 +11,15 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { createOrGetConversation } from "@/convex/chats";
 
 export default function ChatPage() {
   const { user } = useUser();
   const [activeConversationId, setActiveConversationId] = useState<Id<"conversations"> | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+
+  const [activeConversation, setActiveConversation] = useState<any>(null);
 
   // Check if mobile on mount and when window resizes
   useEffect(() => {
@@ -45,13 +48,15 @@ export default function ChatPage() {
   });
 
   // Find the active conversation details
-  const activeConversation = conversations?.find(
-    (conv: any) => conv.id === activeConversationId
-  );
+  // const activeConversation = conversations?.find(
+  //   (conv: any) => conv.id === activeConversationId
+  // );
 
   // Handle conversation selection
   const handleSelectConversation = (conversationId: Id<"conversations">) => {
     setActiveConversationId(conversationId);
+    const conv = conversations?.find(c => c.id === conversationId);
+    setActiveConversation(conv);
     if (isMobile) {
       setIsSidebarOpen(false);
     }
@@ -117,10 +122,17 @@ export default function ChatPage() {
             <ChatHeader
               conversationId={activeConversationId}
               currentUserId={user.id}
+              conversation={activeConversation}
               participantName={activeConversation.name || "Unknown"}
               participantOnline={activeConversation.participantOnline}
               onBack={isMobile ? handleBack : undefined}
               showBackButton={isMobile}
+              // onStartChat={(userId) => {
+              //   createOrGetConversation({ 
+              //     participantUserId: userId, 
+              //     currentUserId: user.id 
+              //   }).then(id => handleSelectConversation(id));
+              // }}
             />
             <ChatMessages
               conversationId={activeConversationId}
