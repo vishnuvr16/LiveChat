@@ -61,6 +61,7 @@ export default function ConversationPage() {
         currentUserId={user.id}
         participantName={activeConversation.name || "Unknown"}
         participantOnline={activeConversation.participantOnline}
+        conversation={activeConversation}
       />
       <ChatMessages
         conversationId={conversationId}
